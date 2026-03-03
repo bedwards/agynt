@@ -1,5 +1,5 @@
 /**
- * Probe newly discovered services from the binary strings.
+ * Probe cascade-related LanguageServerService methods.
  */
 
 import * as grpc from "@grpc/grpc-js";
@@ -7,32 +7,41 @@ import { discoverServers } from "./discover.js";
 import { extractCert } from "./tls.js";
 import { LanguageServerClient } from "./client.js";
 
-const NEW_METHODS = [
-    // ApiServerService — possible AI endpoint!
-    "/exa.api_server_pb.ApiServerService/GetStreamingModelAPITextCompletion",
-
-    // CascadePlugins — the cascade service from extension.js
-    // Need to find methods - let's try common ones
-    "/exa.cascade_plugins_pb.CascadePluginsService/GetCascadePlugins",
-    "/exa.cascade_plugins_pb.CascadePluginsService/ListCascadePlugins",
-
-    // Analytics 
-    "/exa.product_analytics_pb.ProductAnalyticsService/RecordAnalyticsEvent",
-    "/exa.user_analytics_pb.UserAnalyticsService/GetAnalytics",
-    "/exa.user_analytics_pb.UserAnalyticsService/GetPreferredTimeZone",
-
-    // Code Index
-    "/exa.opensearch_index_pb.CodeIndexService/HybridSearch",
-    "/exa.opensearch_index_pb.CodeIndexService/KeywordSearch",
-
-    // SeatManagement (user info)
-    "/exa.seat_management_pb.SeatManagementService/GetCurrentUser",
-    "/exa.seat_management_pb.SeatManagementService/GetUserStatus",
-    "/exa.seat_management_pb.SeatManagementService/GetPlanStatus",
+const CASCADE_METHODS = [
+    "/exa.language_server_pb.LanguageServerService/StartCascade",
+    "/exa.language_server_pb.LanguageServerService/SendUserCascadeMessage",
+    "/exa.language_server_pb.LanguageServerService/GetModelStatuses",
+    "/exa.language_server_pb.LanguageServerService/GetCommandModelConfigs",
+    "/exa.language_server_pb.LanguageServerService/GetCascadeTrajectory",
+    "/exa.language_server_pb.LanguageServerService/InitializeCascadePanelState",
+    "/exa.language_server_pb.LanguageServerService/GetAllCustomAgentConfigs",
+    "/exa.language_server_pb.LanguageServerService/GetStatus",
+    "/exa.language_server_pb.LanguageServerService/GetUserSettings",
+    "/exa.language_server_pb.LanguageServerService/GetUserStatus",
+    "/exa.language_server_pb.LanguageServerService/GetWorkspaceInfos",
+    "/exa.language_server_pb.LanguageServerService/WellSupportedLanguages",
+    "/exa.model_management_pb.ModelManagementService/ListModels",
 ];
 
+function hexDump(buf: Buffer): string {
+    if (buf.length === 0) return "(empty)";
+    const hex = buf.toString("hex").replace(/(.{2})/g, "$1 ").trim();
+    const ascii = Array.from(buf)
+        .map((b) => (b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : "."))
+        .join("");
+    return `[${buf.length} bytes]\n  HEX: ${hex}\n  ASCII: ${ascii}`;
+}
+
+function tryDecodeReadableStrings(buf: Buffer): string {
+    if (buf.length === 0) return "";
+    // Try to find UTF-8 strings in the protobuf
+    const text = buf.toString("utf-8");
+    const readable = text.replace(/[^\x20-\x7e\n]/g, "|").replace(/\|{3,}/g, "...");
+    return readable;
+}
+
 async function main() {
-    const servers = discoverServers();
+    const servers = discoverServers("agynt");
     const target = servers[0];
     if (!target) { console.error("No server found"); process.exit(1); }
 
@@ -41,77 +50,35 @@ async function main() {
     const certPem = await extractCert("127.0.0.1", target.grpcPort);
     const client = new LanguageServerClient(`127.0.0.1:${target.grpcPort}`, certPem);
 
-    // Try with csrf_token
-    console.log("── With csrf_token ──\n");
-    const md1 = new grpc.Metadata();
-    md1.set("x-codeium-csrf-token", target.csrfToken);
+    const metadata = new grpc.Metadata();
+    metadata.set("x-codeium-csrf-token", target.csrfToken);
 
-    for (const method of NEW_METHODS) {
-        const short = method.split("/").slice(-2).join("/");
-        const { error, response } = await client.callUnary(method, md1, Buffer.alloc(0), 3000);
+    for (const method of CASCADE_METHODS) {
+        const shortName = method.split("/").pop();
+        console.log(`── ${shortName} ──`);
+
+        const { error, response } = await client.callUnary(method, metadata, Buffer.alloc(0), 5000);
+
         if (error) {
-            console.log(`  ${short.padEnd(70)} ✗ ${grpc.status[error.code].padEnd(18)} ${error.details?.slice(0, 60)}`);
-        } else {
-            const len = response?.length ?? 0;
-            console.log(`  ${short.padEnd(70)} ✓ OK (${len} bytes)`);
-            if (response && response.length > 0) {
-                const readable = response.toString("utf-8").replace(/[^\x20-\x7e]/g, " ").replace(/\s+/g, " ").trim();
-                if (readable.length > 3) console.log(`    readable: ${readable}`);
+            console.log(`  ✗ ${grpc.status[error.code]}: ${error.details}`);
+            if (error.metadata) {
+                const entries = error.metadata.toJSON();
+                if (Object.keys(entries).length > 0) {
+                    console.log(`  metadata:`, JSON.stringify(entries));
+                }
             }
-        }
-    }
-
-    // Try with ext_csrf_token  
-    console.log("\n── With ext_csrf_token ──\n");
-    const md2 = new grpc.Metadata();
-    md2.set("x-codeium-csrf-token", target.extCsrfToken);
-
-    for (const method of NEW_METHODS) {
-        const short = method.split("/").slice(-2).join("/");
-        const { error, response } = await client.callUnary(method, md2, Buffer.alloc(0), 3000);
-        if (error) {
-            console.log(`  ${short.padEnd(70)} ✗ ${grpc.status[error.code].padEnd(18)} ${error.details?.slice(0, 60)}`);
-        } else {
-            const len = response?.length ?? 0;
-            console.log(`  ${short.padEnd(70)} ✓ OK (${len} bytes)`);
-            if (response && response.length > 0) {
-                const readable = response.toString("utf-8").replace(/[^\x20-\x7e]/g, " ").replace(/\s+/g, " ").trim();
-                if (readable.length > 3) console.log(`    readable: ${readable}`);
+        } else if (response) {
+            console.log(`  ✓ ${hexDump(response)}`);
+            const readable = tryDecodeReadableStrings(response);
+            if (readable.length > 5) {
+                console.log(`  READABLE: ${readable.slice(0, 500)}`);
             }
-        }
-    }
-
-    // Also try the "third port" (54753) with insecure 
-    console.log("\n── Port ext+2 (insecure) + csrf_token ──\n");
-    const insecureClient = new grpc.Client(
-        `127.0.0.1:${target.extPort + 2}`,
-        grpc.credentials.createInsecure()
-    );
-    const md3 = new grpc.Metadata();
-    md3.set("x-codeium-csrf-token", target.csrfToken);
-
-    for (const method of NEW_METHODS) {
-        const short = method.split("/").slice(-2).join("/");
-        const result = await new Promise<{ error: any; response: any }>((resolve) => {
-            insecureClient.makeUnaryRequest(
-                method,
-                (arg: Buffer) => arg,
-                (arg: Buffer) => arg,
-                Buffer.alloc(0),
-                md3,
-                { deadline: new Date(Date.now() + 3000) },
-                (error: any, response: any) => resolve({ error, response })
-            );
-        });
-        if (result.error) {
-            console.log(`  ${short.padEnd(70)} ✗ ${grpc.status[result.error.code]?.padEnd(18) ?? result.error.code} ${result.error.details?.slice(0, 60) ?? ""}`);
         } else {
-            const len = result.response?.length ?? 0;
-            console.log(`  ${short.padEnd(70)} ✓ OK (${len} bytes)`);
+            console.log(`  ✓ (null response)`);
         }
+        console.log();
     }
 
-    insecureClient.close();
     client.close();
 }
 
