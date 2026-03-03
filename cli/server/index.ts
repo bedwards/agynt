@@ -11,9 +11,10 @@
  */
 import { CascadeSession, MODELS } from "../core/cascade.js";
 
-const PORT = parseInt(process.env.PORT ?? "4141", 10);
-const MODEL_ID = "claude-opus-4.6";
-const MODEL_INFO = MODELS[MODEL_ID];
+const PORT = parseInt(process.env.PORT ?? "8462", 10);
+const MODEL_INFO = MODELS["claude-opus-4.6"];
+const INTERNAL_MODEL_KEY = "claude-opus-4.6"; // key into MODELS
+const MODEL_ID = "claude-opus-4-6";           // OpenAI-facing ID
 
 // ── OpenAI response types ───────────────────────────────────────────
 
@@ -47,14 +48,13 @@ function chatCompletionChunk(id: string, content: string, model: string, done: b
 }
 
 function modelsResponse() {
+    const ts = Math.floor(Date.now() / 1000);
     return {
         object: "list",
-        data: [{
-            id: MODEL_ID,
-            object: "model",
-            created: Math.floor(Date.now() / 1000),
-            owned_by: "antigravity",
-        }],
+        data: [
+            { id: MODEL_ID, object: "model", created: ts, owned_by: "antigravity" },
+            { id: "agynt", object: "model", created: ts, owned_by: "antigravity" },
+        ],
     };
 }
 
@@ -121,7 +121,8 @@ async function handleChatCompletion(req: Request): Promise<Response> {
         await session.connect();
         await session.startCascade();
 
-        const sendResult = await session.sendWithFallback(prompt, MODEL_ID);
+        // Always route to Claude Opus 4.6 regardless of requested model name
+        const sendResult = await session.sendWithFallback(prompt, INTERNAL_MODEL_KEY);
         if (sendResult.error) {
             session.close();
             if (/capacity|503/i.test(sendResult.error)) {
