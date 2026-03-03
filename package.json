@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "agynt": "bun run cli/index.ts",
+    "serve": "bun run cli/server/index.ts",
     "heartbeat": "tsx src/index.ts",
     "prompt": "tsx src/prompt.ts",
     "probe": "tsx src/probe.ts"
@@ -20,6 +21,7 @@
     "react-dom": "^19.2.4"
   },
   "devDependencies": {
+    "@types/bun": "^1.3.10",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "tsx": "4.21.0",
