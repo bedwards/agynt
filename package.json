@@ -1,0 +1,16 @@
+{
+  "name": "ls-client",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "1.14.3",
+    "@grpc/proto-loader": "0.8.0"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "tsx": "4.21.0"
+  }
+}

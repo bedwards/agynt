@@ -136,18 +136,29 @@ gRPC calls from the IDE.
 
 ## What We KNOW Works (✅ Verified)
 
-1. **Chrome DevTools MCP** on the parent's secondary port (ext_port + 32) speaks JSON-RPC
+1. **gRPC Heartbeat** — `LanguageServerService/Heartbeat` returns a 14-byte protobuf on port
+   ext_port + 1 (HTTPS/H2) using `csrf_token` and metadata key `x-codeium-csrf-token`.
+
+2. **HandleAsyncPostMessage** — `ExtensionServerService/HandleAsyncPostMessage` works on the
+   same port using `ext_csrf_token`. This is the IDE↔language_server message bus.
+
+3. **Two CSRF tokens gate two services** on the same HTTPS port:
+   - `csrf_token` → `LanguageServerService` (Heartbeat, GetAllCustomAgentConfigs)
+   - `ext_csrf_token` → `ExtensionServerService` (HandleAsyncPostMessage, WriteCascadeEdit, etc.)
+
+4. **The CSRF metadata key** is `x-codeium-csrf-token` (discovered from `extension.js` and
+   confirmed in the binary's `CsrfInterceptor.WrapUnary`).
+
+5. **Chrome DevTools MCP** on the parent's secondary port (ext_port + 32) speaks JSON-RPC
    2.0 over HTTP with SSE. We successfully called `initialize` and `tools/list`.
-   Protocol: `POST /` with `Accept: application/json, text/event-stream`.
 
-2. **The TLS certificate** on port 54380 is a self-signed cert:
+6. **The TLS certificate** on the gRPC port is self-signed:
    - Subject: `CN=localhost; O=ENABLES HTTP2; OU=bundled on purpose`
-   - It can be extracted via: `openssl s_client -connect 127.0.0.1:54380 -servername localhost`
-   - Saved copy at `/tmp/ls_cert.pem` (may need re-extraction if server restarts)
+   - Extractable via Node.js `tls.connect()` or `openssl s_client`
 
-3. **HTTP/2 is supported** on port 54380 (verified via curl ALPN negotiation).
+7. **HTTP/2 is supported** on the gRPC port (verified via curl ALPN negotiation).
 
-4. **The gRPC service definitions** are embedded in the binary (extracted via `strings`).
+8. **Port ext_port + 2** also serves gRPC over plain HTTP (no TLS needed).
 
 ---
 
@@ -226,27 +237,19 @@ gRPC calls from the IDE.
 
 ## What We Have NOT Yet Figured Out (❓ Unknown)
 
-1. **gRPC metadata key for CSRF token** — The extension.js passes `csrfToken` to the
-   client constructor `G(csrfToken, address)`. The exact gRPC metadata key name is
-   unknown. Likely candidates:
-   - `x-csrf-token`
-   - `csrf-token`
-   - `csrf_token`
-   - `authorization`
-   
-   **Try all of them.**
+1. **Protobuf message schemas** for `HandleAsyncPostMessage` — We know it takes JSON in a
+   `requestContent` field and returns JSON in `responseContent`, but we need to construct the
+   protobuf wrapper. The extension.js shows command types like `"listTerminals"`,
+   `"handleReload"`, `"fetchUserAnalyticsSummary"`, etc.
 
-2. **Protobuf message schemas** — We know the method paths but NOT the protobuf message
-   types for request/response. For `Heartbeat`, it likely accepts an empty message (or a
-   message with metadata). For `FetchAvailableModels`, unknown.
+2. **How AI/cascade requests flow** — The `PredictionService`, `CloudCode`, and `JetskiService`
+   methods all return 404 on the local port (NOT served locally). The language server proxies
+   AI requests to Cloud Code internally. The cascade flow likely goes through
+   `HandleAsyncPostMessage` or a separate streaming mechanism.
 
-   **Approach**: Use raw bytes. Send empty protobuf (`b""`) first. If the server returns
-   data, we can decode it. If it returns a gRPC error with `INVALID_ARGUMENT`, we know
-   we need a proper request body.
-
-3. **Whether `@grpc/grpc-js` can connect** — We tried Python's `grpcio` but it hung on
-   TLS even with the extracted cert. Node.js `@grpc/grpc-js` may handle the self-signed
-   cert differently (it has `grpc.credentials.createSsl()` with custom root cert support).
+3. **The cascade command type** that triggers AI generation — likely related to
+   `InternalAtomicAgenticChat` or `streamGenerateContent`, but the exact JSON payload format
+   and command name for the message bus is unknown.
 
 ---
 
