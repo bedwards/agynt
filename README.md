@@ -3,7 +3,14 @@
 Talk to Claude Opus 4.6 from your terminal — no API key needed. Piggybacks on the already-running, already-authenticated Antigravity IDE language server.
 
 ```bash
-npm run prompt
+# One-shot prompt
+bun run cli/index.ts "What is a burrito? In one sentence."
+
+# Interactive TUI
+bun run cli/index.ts
+
+# List available models
+bun run cli/index.ts --list-models
 ```
 
 ```

@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "agynt": "bun run cli/index.ts",
     "heartbeat": "tsx src/index.ts",
     "prompt": "tsx src/prompt.ts",
     "probe": "tsx src/probe.ts"
@@ -10,9 +11,17 @@
   "dependencies": {
     "@bufbuild/protobuf": "^2.11.0",
     "@grpc/grpc-js": "1.14.3",
-    "@grpc/proto-loader": "0.8.0"
+    "@grpc/proto-loader": "0.8.0",
+    "chalk": "^5.6.2",
+    "commander": "^14.0.3",
+    "ink": "^6.8.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
   },
   "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "tsx": "4.21.0",
     "typescript": "5.9.3"
   }
